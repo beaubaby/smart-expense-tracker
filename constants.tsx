@@ -14,5 +14,5 @@ export const CATEGORY_COLORS: Record<Category, string> = {
 export const CATEGORIES = Object.values(Category);
 
 export const DEFAULT_CURRENCY = 'NZD';
-
-export const SUPPORTED_CURRENCIES = ['NZD', 'THB', 'USD'];
+export const SUPPORTED_CURRENCIES = ['NZD', 'THB'];
+export const THB_TO_NZD_RATE = 20;

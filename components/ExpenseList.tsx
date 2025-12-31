@@ -54,7 +54,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onDelete }) => {
                   </div>
                   {expense.originalCurrency !== DEFAULT_CURRENCY && (
                     <div className="text-xs text-slate-400 font-medium">
-                      {expense.originalAmount.toFixed(2)} {expense.originalCurrency}
+                      Original: {expense.originalAmount.toFixed(2)} {expense.originalCurrency}
                     </div>
                   )}
                 </div>

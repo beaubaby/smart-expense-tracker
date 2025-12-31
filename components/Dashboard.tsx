@@ -45,7 +45,7 @@ const Dashboard: React.FC<DashboardProps> = ({ expenses }) => {
           </svg>
         </div>
         <h3 className="text-lg font-semibold text-slate-900">No expenses yet</h3>
-        <p className="text-slate-500 text-sm">Upload a receipt or add an expense to see your insights.</p>
+        <p className="text-slate-500 text-sm">Add an expense to see your insights in {DEFAULT_CURRENCY}.</p>
       </div>
     );
   }
@@ -101,7 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({ expenses }) => {
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <h3 className="text-slate-800 font-bold mb-4 flex items-center gap-2">
           <span className="w-1 h-6 bg-violet-500 rounded-full"></span>
-          Spending History ({DEFAULT_CURRENCY})
+          Daily History ({DEFAULT_CURRENCY})
         </h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">

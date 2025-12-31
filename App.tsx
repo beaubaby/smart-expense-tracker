@@ -4,6 +4,7 @@ import { Expense } from './types';
 import Dashboard from './components/Dashboard';
 import ExpenseList from './components/ExpenseList';
 import AddExpenseModal from './components/AddExpenseModal';
+import { DEFAULT_CURRENCY } from './constants';
 
 const App: React.FC = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -39,6 +40,38 @@ const App: React.FC = () => {
     setExpenses(prev => prev.filter(e => e.id !== id));
   };
 
+  const handleExportCSV = () => {
+    if (expenses.length === 0) return;
+
+    const headers = ['Date', 'Description', 'Category', 'Original Amount', 'Original Currency', `Converted Amount (${DEFAULT_CURRENCY})`].join(',');
+    
+    const rows = expenses.map(e => {
+      // Escape commas and quotes in description
+      const escapedDesc = `"${e.description.replace(/"/g, '""')}"`;
+      return [
+        e.date,
+        escapedDesc,
+        e.category,
+        e.originalAmount.toFixed(2),
+        e.originalCurrency,
+        e.amount.toFixed(2)
+      ].join(',');
+    });
+
+    const csvContent = [headers, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStr = new Date().toISOString().split('T')[0];
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `expenses_export_${dateStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const filteredExpenses = expenses.filter(e => 
     e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.category.toLowerCase().includes(searchTerm.toLowerCase())
@@ -48,17 +81,17 @@ const App: React.FC = () => {
     <div className="min-h-screen pb-24 lg:pb-12">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight hidden sm:block">SmartSpend</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight hidden md:block">SmartSpend</h1>
           </div>
           
-          <div className="flex-grow max-w-md mx-4">
+          <div className="flex-grow max-w-md">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,15 +108,29 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all shadow-lg shadow-indigo-200 active:scale-95"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            Add New
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleExportCSV}
+              disabled={expenses.length === 0}
+              title="Export CSV"
+              className="flex items-center justify-center p-2.5 sm:px-4 sm:py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-5 h-5 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="hidden sm:inline">Export</span>
+            </button>
+
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all shadow-lg shadow-indigo-200 active:scale-95"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Add New
+            </button>
+          </div>
         </div>
       </header>
 

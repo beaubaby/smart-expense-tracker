@@ -11,8 +11,8 @@ export enum Category {
 
 export interface Expense {
   id: string;
-  amount: number; // This is the converted amount in NZD
-  currency: string; // Target currency, always NZD in this version
+  amount: number; // Converted amount in NZD
+  currency: string; // Target currency (NZD)
   originalAmount: number;
   originalCurrency: string;
   category: Category;
