@@ -1,0 +1,7 @@
+{
+  "name": "Smart Expense Tracker",
+  "description": "An AI-powered expense tracking application that uses Gemini to capture and categorize expenses from receipts, chat screenshots, or manual entries. Features real-time visual insights and automated categorization.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
