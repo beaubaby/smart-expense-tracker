@@ -89,7 +89,7 @@ const Dashboard: React.FC<DashboardProps> = ({ expenses }) => {
               </Pie>
               <Tooltip 
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                formatter={(value: number) => [`$${value.toFixed(2)} ${DEFAULT_CURRENCY}`, 'Amount']}
+                formatter={(val: number) => [`$${val.toFixed(2)}`, 'Amount']}
               />
               <Legend verticalAlign="bottom" height={36}/>
             </PieChart>
@@ -112,7 +112,7 @@ const Dashboard: React.FC<DashboardProps> = ({ expenses }) => {
               <Tooltip 
                 cursor={{ fill: '#f8fafc' }}
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                formatter={(value: number) => [`$${value.toFixed(2)} ${DEFAULT_CURRENCY}`, 'Total']}
+                formatter={(val: number) => [`$${val.toFixed(2)}`, 'Daily Total']}
               />
               <Bar dataKey="amount" fill="#6366f1" radius={[4, 4, 0, 0]} />
             </BarChart>

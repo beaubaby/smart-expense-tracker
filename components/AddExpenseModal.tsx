@@ -17,26 +17,32 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ onAdd, onClose }) => 
     description: '',
     category: Category.OTHERS,
     date: new Date().toISOString().split('T')[0],
-    currency: 'USD' // Default input currency
+    currency: 'USD'
   });
   const [convertedPreview, setConvertedPreview] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-conversion for manual entry
   useEffect(() => {
     const fetchRate = async () => {
       const amt = parseFloat(formData.amount);
       if (!isNaN(amt) && amt > 0) {
         setConverting(true);
-        const rate = await getConversionRate(formData.currency, DEFAULT_CURRENCY);
-        setConvertedPreview(amt * rate);
-        setConverting(false);
+        try {
+          const rate = await getConversionRate(formData.currency, DEFAULT_CURRENCY);
+          setConvertedPreview(amt * rate);
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setConverting(false);
+        }
       } else {
         setConvertedPreview(null);
       }
     };
 
-    const debounce = setTimeout(fetchRate, 800);
-    return () => clearTimeout(debounce);
+    const debounceTimer = setTimeout(fetchRate, 800);
+    return () => clearTimeout(debounceTimer);
   }, [formData.amount, formData.currency]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -46,9 +52,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ onAdd, onClose }) => 
     
     onAdd({
       amount: convertedPreview || originalAmt,
+      currency: DEFAULT_CURRENCY,
       originalAmount: originalAmt,
       originalCurrency: formData.currency,
-      currency: DEFAULT_CURRENCY,
       description: formData.description,
       category: formData.category,
       date: formData.date
@@ -138,17 +144,15 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ onAdd, onClose }) => 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Amount</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    className="w-full pl-4 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                    placeholder="0.00"
-                  />
-                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  placeholder="0.00"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Currency</label>
@@ -166,7 +170,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ onAdd, onClose }) => 
 
             {convertedPreview !== null && (
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center justify-between animate-in slide-in-from-top-2 duration-300">
-                <span className="text-emerald-700 text-sm font-medium">Auto-conversion to {DEFAULT_CURRENCY}:</span>
+                <span className="text-emerald-700 text-sm font-medium">Converted to {DEFAULT_CURRENCY}:</span>
                 <span className="text-emerald-800 font-bold flex items-center gap-2">
                   {converting ? (
                     <span className="w-4 h-4 border-2 border-emerald-600 border-t-transparent animate-spin rounded-full"></span>
@@ -177,7 +181,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ onAdd, onClose }) => 
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
                 <select

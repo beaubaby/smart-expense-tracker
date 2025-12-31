@@ -15,6 +15,4 @@ export const CATEGORIES = Object.values(Category);
 
 export const DEFAULT_CURRENCY = 'NZD';
 
-export const SUPPORTED_CURRENCIES = [
-  'NZD', 'USD', 'AUD', 'EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'SGD', 'HKD'
-];
+export const SUPPORTED_CURRENCIES = ['NZD', 'THB', 'USD'];
