@@ -2,7 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category } from "./types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Always use direct process.env.API_KEY as per guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const parseReceiptImage = async (base64Image: string) => {
   try {
@@ -42,7 +43,9 @@ export const parseReceiptImage = async (base64Image: string) => {
       },
     });
 
-    return JSON.parse(response.text);
+    // Access the text property directly from the GenerateContentResponse object
+    const textOutput = response.text || '{}';
+    return JSON.parse(textOutput);
   } catch (error) {
     console.error("Error parsing receipt with Gemini:", error);
     throw error;
