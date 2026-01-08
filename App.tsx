@@ -20,17 +20,18 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [useLocalMode, setUseLocalMode] = useState(false);
 
   // Initialize IndexedDB and check config
   useEffect(() => {
     const init = async () => {
       try {
         await dbService.init();
+        // Always load local data first for fast initial paint
+        const localExpenses = await dbService.getAllExpenses();
+        setExpenses(localExpenses);
+        
         if (!isConfigValid || !db) {
-          console.info("Firebase not configured, using local storage (IndexedDB).");
-          const localExpenses = await dbService.getAllExpenses();
-          setExpenses(localExpenses);
+          console.info("Firebase not configured, staying in local storage mode.");
           setIsInitialLoading(false);
         }
       } catch (err) {
@@ -42,7 +43,7 @@ const App: React.FC = () => {
 
   // Sync with Firebase if available
   useEffect(() => {
-    if (!isConfigValid || !db || useLocalMode === false && !isConfigValid) return;
+    if (!isConfigValid || !db) return;
 
     setIsInitialLoading(true);
     try {
@@ -67,18 +68,17 @@ const App: React.FC = () => {
       setIsInitialLoading(false);
       setConfigError(err.message);
     }
-  }, [useLocalMode]);
+  }, []);
 
   const addExpense = async (newExpense: Omit<Expense, 'id' | 'createdAt'>) => {
     const timestamp = Date.now();
     const id = crypto.randomUUID();
     const expenseData = { ...newExpense, createdAt: timestamp };
 
-    // Always save to IndexedDB for offline capability/local testing
+    // Always save to IndexedDB for offline capability
     try {
       await dbService.addExpense({ id, ...expenseData } as Expense);
       if (!db) {
-        // If local mode, update state manually
         setExpenses(prev => [{ id, ...expenseData } as Expense, ...prev]);
       }
     } catch (e) {
@@ -96,7 +96,6 @@ const App: React.FC = () => {
   };
 
   const deleteExpense = async (id: string) => {
-    // Delete from IndexedDB
     try {
       await dbService.deleteExpense(id);
       if (!db) {
@@ -106,7 +105,6 @@ const App: React.FC = () => {
       console.error("IndexedDB delete failed:", e);
     }
 
-    // Delete from Firebase
     if (db) {
       try {
         await deleteDoc(doc(db, "expenses", id));
@@ -136,7 +134,7 @@ const App: React.FC = () => {
     link.click();
   };
 
-  const isActuallyRunningLocal = !isConfigValid || useLocalMode;
+  const isActuallyRunningLocal = !isConfigValid || !!configError;
 
   return (
     <div className="min-h-screen bg-[#F8F9FE] pb-32 lg:pb-12">
@@ -147,11 +145,11 @@ const App: React.FC = () => {
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 hidden sm:block leading-none mb-1">Smart Expense Tracker</h1>
+              <h1 className="text-xl font-bold text-slate-900 hidden sm:block leading-none mb-1">Smart Expense</h1>
               <div className="flex items-center gap-1.5">
                 <div className={`w-1.5 h-1.5 rounded-full ${isActuallyRunningLocal ? 'bg-amber-400' : 'bg-emerald-500 animate-pulse'}`}></div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {isActuallyRunningLocal ? 'Local Testing Mode' : 'Cloud Sync Active'}
+                  {isActuallyRunningLocal ? 'Local Mode' : 'Cloud Sync'}
                 </span>
               </div>
             </div>
@@ -163,7 +161,7 @@ const App: React.FC = () => {
             </span>
             <input 
               type="text" 
-              placeholder="Search history..."
+              placeholder="Search..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
@@ -177,40 +175,19 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8">
-        {!isConfigValid && !useLocalMode ? (
-          <div className="bg-white border border-slate-200 rounded-[32px] p-8 lg:p-12 text-center shadow-xl shadow-slate-200/50 animate-in fade-in zoom-in duration-500">
-            <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            </div>
-            <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Local Test Mode Available</h2>
-            <p className="text-slate-600 max-w-md mx-auto mb-8 leading-relaxed">
-              Firebase is not configured yet. You can either set up your variables on Vercel or proceed in **Local Mode** to test the app features right now.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <button 
-                onClick={() => setUseLocalMode(true)}
-                className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"
-              >
-                Start Testing Locally
-              </button>
-              <a 
-                href="https://console.firebase.google.com" 
-                target="_blank"
-                className="w-full sm:w-auto px-8 py-4 border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all"
-              >
-                Go to Firebase Console
-              </a>
-            </div>
-          </div>
-        ) : isInitialLoading ? (
+        {isInitialLoading && expenses.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
             <p className="text-slate-500 font-medium">Loading data...</p>
           </div>
         ) : (
           <>
-            {configError && <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-2xl text-sm border border-red-100">{configError}</div>}
+            {configError && (
+              <div className="mb-4 p-4 bg-amber-50 text-amber-800 rounded-2xl text-xs border border-amber-100 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                {configError} - Running in local mode.
+              </div>
+            )}
             {activeView === 'overview' && <Dashboard expenses={filteredExpenses} />}
             {activeView === 'transactions' && <ExpenseList expenses={filteredExpenses} onDelete={deleteExpense} />}
             {activeView === 'monthly' && <MonthlyView expenses={filteredExpenses} />}
