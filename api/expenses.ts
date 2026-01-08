@@ -57,7 +57,7 @@ export default async function handler(
     if (req.method === 'DELETE') {
       // Delete expense
       const id = req.query.id as string;
-      const result = await collection.deleteOne({ _id: id });
+      const result = await collection.deleteOne({ _id: new ObjectId(id) });
       console.log(`🗑️  Deleted ${result.deletedCount} expense(s)`);
       return res.status(200).json({ success: true, deletedCount: result.deletedCount });
     }
