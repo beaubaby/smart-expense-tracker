@@ -18,98 +18,104 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ViewType>('overview');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [configError, setConfigError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'cloud' | 'local'>('local');
 
-  // Initialize IndexedDB and check config
+  // Load initial data
   useEffect(() => {
-    const init = async () => {
+    const initData = async () => {
       try {
         await dbService.init();
-        // Always load local data first for fast initial paint
-        const localExpenses = await dbService.getAllExpenses();
-        setExpenses(localExpenses);
+        // Migrate from old localStorage if any
+        await dbService.migrateFromLocalStorage();
+        
+        // Initial fast load from IndexedDB
+        const localData = await dbService.getAllExpenses();
+        if (localData.length > 0) {
+          setExpenses(localData.sort((a, b) => b.createdAt - a.createdAt));
+        }
         
         if (!isConfigValid || !db) {
-          console.info("Firebase not configured, staying in local storage mode.");
-          setIsInitialLoading(false);
+          setIsLoading(false);
+          setSyncStatus('local');
         }
       } catch (err) {
-        console.error("Storage init failed:", err);
+        console.error("Initialization error:", err);
+        setIsLoading(false);
       }
     };
-    init();
+    initData();
   }, []);
 
-  // Sync with Firebase if available
+  // Sync with Firebase Firestore
   useEffect(() => {
     if (!isConfigValid || !db) return;
 
-    setIsInitialLoading(true);
     try {
       const q = query(collection(db, "expenses"), orderBy("createdAt", "desc"));
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const expensesArr: Expense[] = [];
-        querySnapshot.forEach((doc) => {
-          expensesArr.push({ id: doc.id, ...doc.data() } as Expense);
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const cloudExpenses: Expense[] = [];
+        snapshot.forEach((doc) => {
+          cloudExpenses.push({ id: doc.id, ...doc.data() } as Expense);
         });
-        setExpenses(expensesArr);
-        setIsInitialLoading(false);
-        setConfigError(null);
-      }, (error) => {
-        console.error("Firebase sync error:", error);
-        setIsInitialLoading(false);
-        setConfigError(`Sync Error: ${error.message}`);
+        
+        setExpenses(cloudExpenses);
+        setSyncStatus('cloud');
+        setIsLoading(false);
+        
+        // Background update local cache
+        cloudExpenses.forEach(exp => dbService.addExpense(exp).catch(() => {}));
+      }, (err) => {
+        console.error("Firestore sync error:", err);
+        setSyncStatus('local');
+        setIsLoading(false);
       });
 
       return () => unsubscribe();
-    } catch (err: any) {
-      console.error("Firestore error:", err);
-      setIsInitialLoading(false);
-      setConfigError(err.message);
+    } catch (err) {
+      console.error("Setup Firestore listener failed:", err);
+      setSyncStatus('local');
+      setIsLoading(false);
     }
   }, []);
 
   const addExpense = async (newExpense: Omit<Expense, 'id' | 'createdAt'>) => {
     const timestamp = Date.now();
-    const id = crypto.randomUUID();
+    const tempId = crypto.randomUUID();
     const expenseData = { ...newExpense, createdAt: timestamp };
 
-    // Always save to IndexedDB for offline capability
-    try {
-      await dbService.addExpense({ id, ...expenseData } as Expense);
-      if (!db) {
-        setExpenses(prev => [{ id, ...expenseData } as Expense, ...prev]);
-      }
-    } catch (e) {
-      console.error("IndexedDB save failed:", e);
+    // 1. Optimistic Update (UI reacts immediately)
+    if (syncStatus === 'local') {
+      const fullExpense = { id: tempId, ...expenseData } as Expense;
+      setExpenses(prev => [fullExpense, ...prev]);
+      await dbService.addExpense(fullExpense);
     }
 
-    // Save to Firebase if configured
-    if (db) {
+    // 2. Persistent Save to Cloud
+    if (db && syncStatus === 'cloud') {
       try {
         await addDoc(collection(db, "expenses"), expenseData);
       } catch (e) {
-        console.error("Firebase save failed:", e);
+        console.error("Cloud save failed, falling back to local:", e);
+        // If cloud fails, ensure it's at least in local
+        await dbService.addExpense({ id: tempId, ...expenseData } as Expense);
       }
     }
   };
 
   const deleteExpense = async (id: string) => {
-    try {
-      await dbService.deleteExpense(id);
-      if (!db) {
-        setExpenses(prev => prev.filter(e => e.id !== id));
-      }
-    } catch (e) {
-      console.error("IndexedDB delete failed:", e);
-    }
+    // Optimistic delete for UI speed
+    setExpenses(prev => prev.filter(e => e.id !== id));
+    
+    // Delete from Local
+    await dbService.deleteExpense(id).catch(console.error);
 
-    if (db) {
+    // Delete from Cloud
+    if (db && syncStatus === 'cloud') {
       try {
         await deleteDoc(doc(db, "expenses", id));
       } catch (e) {
-        console.error("Firebase delete failed:", e);
+        console.error("Cloud delete failed:", e);
       }
     }
   };
@@ -130,11 +136,9 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', 'expenses.csv');
+    link.setAttribute('download', `expenses-${new Date().toISOString().split('T')[0]}.csv`);
     link.click();
   };
-
-  const isActuallyRunningLocal = !isConfigValid || !!configError;
 
   return (
     <div className="min-h-screen bg-[#F8F9FE] pb-32 lg:pb-12">
@@ -147,9 +151,9 @@ const App: React.FC = () => {
             <div>
               <h1 className="text-xl font-bold text-slate-900 hidden sm:block leading-none mb-1">Smart Expense</h1>
               <div className="flex items-center gap-1.5">
-                <div className={`w-1.5 h-1.5 rounded-full ${isActuallyRunningLocal ? 'bg-amber-400' : 'bg-emerald-500 animate-pulse'}`}></div>
+                <div className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'cloud' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {isActuallyRunningLocal ? 'Local Mode' : 'Cloud Sync'}
+                  {syncStatus === 'cloud' ? 'Cloud Sync' : 'Local Mode'}
                 </span>
               </div>
             </div>
@@ -161,33 +165,27 @@ const App: React.FC = () => {
             </span>
             <input 
               type="text" 
-              placeholder="Search..."
+              placeholder="Search expenses..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+              className="w-full pl-9 pr-4 py-2.5 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
             />
           </div>
 
-          <button onClick={handleExportCSV} className="p-2 text-slate-600 rounded-xl hover:bg-slate-50 transition-all">
+          <button onClick={handleExportCSV} className="p-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title="Export CSV">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 10l-4 4m0 0l-4-4m4 4V4" /></svg>
           </button>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8">
-        {isInitialLoading && expenses.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-            <p className="text-slate-500 font-medium">Loading data...</p>
+        {isLoading && expenses.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-100 border-t-indigo-600 mb-4"></div>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Syncing your data...</p>
           </div>
         ) : (
           <>
-            {configError && (
-              <div className="mb-4 p-4 bg-amber-50 text-amber-800 rounded-2xl text-xs border border-amber-100 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                {configError} - Running in local mode.
-              </div>
-            )}
             {activeView === 'overview' && <Dashboard expenses={filteredExpenses} />}
             {activeView === 'transactions' && <ExpenseList expenses={filteredExpenses} onDelete={deleteExpense} />}
             {activeView === 'monthly' && <MonthlyView expenses={filteredExpenses} />}

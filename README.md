@@ -1,51 +1,51 @@
 
-# 🇹🇭 คู่มือการ Deploy Smart Expense Tracker (ละเอียดทุกขั้นตอน)
+# 🚀 Smart Expense Tracker: Cloud Setup Guide
 
-หากคุณ Deploy แล้วแอปไม่ทำงาน หรือข้อมูลไม่ขึ้น ให้เช็คตามลำดับนี้ครับ:
-
-## ⚠️ วิธีแก้ปัญหาหน้าจอขาว (White Screen) หลัง Deploy
-หากคุณเปิดแอปบน Vercel แล้วเจอหน้าจอขาวโล่ง หรือตรวจพบว่าโฟลเดอร์ `dist` มีแค่ `index.html` เปล่าๆ สาเหตุเกิดจากระบบ Build ไม่สามารถเชื่อมต่อกับโค้ด JavaScript ได้:
-1. **ตรวจสอบไฟล์ `index.html`:** ตรวจสอบว่ามีบรรทัด `<script type="module" src="/index.tsx"></script>` ก่อนปิดแท็ก `</body>` หรือไม่ (ในเวอร์ชันล่าสุดผมใส่ไว้ให้แล้ว)
-2. **การตั้งค่า Vercel:** หากคุณเพิ่งเพิ่ม **Environment Variables** (เช่น API_KEY) คุณต้องไปที่เมนู **Deployments** แล้วกดปุ่ม **"Redeploy"** เสมอ! เพราะ Vercel จะไม่ดึงค่าใหม่เข้าไปในแอปที่ Build เสร็จไปแล้ว
-3. **ตรวจสอบ Console:** กด F12 หรือคลิกขวา > Inspect > Console หากเจอ Error เกี่ยวกับ `404 index.tsx` ให้เช็คว่าโครงสร้างไฟล์ใน GitHub ของคุณไม่ได้อยู่ในโฟลเดอร์ซ้อน (เช่น `src/index.tsx`) แต่ต้องอยู่ที่ Root ของโปรเจกต์ครับ
+แอปพลิเคชันนี้ถูกเปลี่ยนจากระบบเก็บข้อมูลในเครื่อง (LocalStorage/IndexedDB) มาเป็น **Firebase Firestore (Cloud)** เต็มรูปแบบ เพื่อให้ข้อมูลไม่หายเมื่อเปลี่ยนเครื่องหรือล้างเบราว์เซอร์
 
 ---
 
-## 1. ตั้งค่า Firebase (หลังบ้าน)
-1. เข้าไปที่ [Firebase Console](https://console.firebase.google.com/)
-2. สร้างโปรเจกต์ใหม่ (จำชื่อโปรเจกต์ไว้)
-3. ไปที่เมนู **Firestore Database** > กด **Create Database**
-   - **สำคัญมาก:** เลือก **Start in test mode**
-   - เลือก Location เป็น `asia-southeast1` (Singapore)
-4. ไปที่ **Project Settings** (รูปเฟือง) > เลื่อนลงมาล่างสุด กดไอคอน `</>` เพื่อสร้าง **Web App**
-   - **ไม่ต้องติ๊ก** "Also set up Firebase Hosting"
-   - ก๊อปปี้ค่าใน `const firebaseConfig = { ... }` ไว้
+## 1. การตั้งค่า Firebase Firestore (ทำครั้งเดียว)
 
-## 2. ตั้งค่า Gemini API Key
-1. ไปที่ [Google AI Studio](https://aistudio.google.com/)
-2. กดปุ่ม **"Create API key"**
-3. **การเลือกโปรเจกต์:** เลือกโปรเจกต์เดียวกับใน Firebase (ถ้าหาเจอ) หรือกด **"Create API key in new project"**
-4. ก๊อปปี้ API Key (ที่ขึ้นต้นด้วย AIza...) ไว้
+1. **สร้างโปรเจกต์:** เข้าไปที่ [Firebase Console](https://console.firebase.google.com/) แล้วกด "Add Project"
+2. **สร้างฐานข้อมูล:** 
+   - ไปที่เมนู **Firestore Database** (แถบซ้ายมือ)
+   - กดปุ่ม **Create Database**
+   - **สำคัญมาก:** เลือก **"Start in test mode"** เพื่อให้แอปสามารถเขียน/อ่านข้อมูลได้ทันที
+   - เลือก Location เป็น `asia-southeast1` (Singapore) เพื่อความรวดเร็วในไทย
+3. **ตั้งค่า Security Rules (สำคัญ!):**
+   - ไปที่แท็บ **Rules** ในหน้า Firestore
+   - หากคุณเลือก Test Mode ระบบจะอนุญาตให้ใช้ได้แค่ 30 วัน
+   - เพื่อให้ใช้งานได้ตลอดไป (สำหรับใช้ส่วนตัว) ให้เปลี่ยนบรรทัด `allow read, write: if ...` เป็น:
+     ```javascript
+     allow read, write: if true;
+     ```
+   - แล้วกด **Publish**
 
-## 3. การตั้งค่าใน Vercel (จุดที่สำคัญที่สุด)
-ไปที่หน้าโปรเจกต์ใน Vercel > **Settings > Environment Variables** ใส่ค่าให้ครบ:
+## 2. การดึงค่า Config ไปใส่ใน Vercel
 
-| Key | Value |
+1. ใน Firebase Console ไปที่ **Project Settings** (รูปเฟืองมุมซ้ายบน)
+2. เลื่อนลงมาที่ "Your apps" แล้วกดไอคอน `</>` (Web App)
+3. ตั้งชื่อแอป (เช่น MyExpense) แล้วกด Register
+4. ก๊อปปี้ค่าใน `const firebaseConfig = { ... }` มาเตรียมไว้
+5. ไปที่หน้าโปรเจกต์ใน **Vercel > Settings > Environment Variables** แล้วเพิ่มค่าเหล่านี้:
+
+| Vercel Key | ค่าที่ต้องก๊อปมาวาง (จาก Firebase Config) |
 | :--- | :--- |
-| `API_KEY` | (จาก Google AI Studio) |
 | `VITE_FIREBASE_API_KEY` | `apiKey` |
 | `VITE_FIREBASE_AUTH_DOMAIN` | `authDomain` |
 | `VITE_FIREBASE_PROJECT_ID` | `projectId` |
 | `VITE_FIREBASE_STORAGE_BUCKET` | `storageBucket` |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
 | `VITE_FIREBASE_APP_ID` | `appId` |
+| `API_KEY` | (ค่า Gemini API Key จาก Google AI Studio) |
 
-**⚠️ ย้ำอีกครั้ง:** เมื่อใส่ค่าครบแล้ว ต้องไปที่เมนู **Deployments** แล้วกด **"Redeploy"** อีกครั้งเสมอ!
-
-## 4. วิธีเช็คสถานะ
-- **จุดสีเขียว (Cloud Sync):** เชื่อมต่อ Firebase สำเร็จ ข้อมูลจะถูกเก็บออนไลน์
-- **จุดสีเหลือง (Local Mode):** ยังเชื่อม Firebase ไม่ติด หรือยังไม่ได้ใส่ Environment Variables ข้อมูลจะเก็บแค่ในเครื่อง (IndexedDB)
-- **สแกนใบเสร็จไม่ได้:** เช็คว่าใส่ `API_KEY` ใน Vercel ถูกต้องหรือไม่
+**⚠️ หลังจาก Save ค่าใน Vercel ครบแล้ว:** คุณต้องไปที่เมนู **Deployments** แล้วกดปุ่มจุดสามจุดหลังรายการล่าสุด เลือก **"Redeploy"** เพื่อให้แอปดึงค่าใหม่ไปใช้ครับ
 
 ---
-*หากติดปัญหาตรงไหน สามารถสอบถามเพิ่มเติมได้เลยครับ!*
+
+## 3. วิธีเช็คว่าข้อมูลอยู่บน Cloud หรือยัง?
+- สังเกตที่แถบด้านบนของแอป: 
+  - 🟢 **Cloud Sync:** ข้อมูลบันทึกลง Google Cloud แล้ว ปลอดภัยแน่นอน
+  - 🟡 **Local Mode:** ข้อมูลยังอยู่ในเครื่อง (เพราะยังตั้งค่า Firebase ไม่สำเร็จ)
+- หากขึ้น Cloud Sync คุณสามารถลองเปิดเว็บนี้ในมือถือหรือคอมเครื่องอื่น แล้วจะเห็นข้อมูลเดียวกันทันทีครับ!
