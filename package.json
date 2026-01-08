@@ -5,20 +5,40 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "node --import tsx server.ts",
+    "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
     "build": "vite build",
-    "preview": "vite preview"
+    "start": "vite preview",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:mongodb": "node --import tsx testMongoDB.ts"
   },
   "dependencies": {
     "@google/genai": "1.34.0",
-    "recharts": "3.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "firebase": "^12.7.0",
+    "mongodb": "^7.0.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "firebase": "^12.7.0"
+    "react-is": "^19.2.3",
+    "recharts": "3.6.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^15.0.7",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/ui": "^1.6.1",
+    "concurrently": "^9.2.1",
+    "jest-mock-extended": "^3.0.7",
+    "jsdom": "^27.4.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^1.6.1"
   }
 }

@@ -1,24 +1,13 @@
 
 import { Expense } from './types';
-import { db } from './firebaseConfig';
-import {
-  collection,
-  addDoc,
-  getDocs,
-  deleteDoc,
-  doc,
-  updateDoc,
-  query,
-  orderBy,
-} from 'firebase/firestore';
 
 const DB_NAME = 'SmartExpenseTrackerDB';
 const STORE_NAME = 'expenses';
 const DB_VERSION = 1;
+const MONGODB_URI = process.env.VITE_MONGODB_URI;
 
 export class DBService {
   private db: IDBDatabase | null = null;
-  private useFirestore = !!db;
 
   async init(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -41,26 +30,23 @@ export class DBService {
 
   async getAllExpenses(): Promise<Expense[]> {
     try {
-      if (this.useFirestore) {
-        // Load from Firestore first
-        const q = query(collection(db!, 'expenses'), orderBy('timestamp', 'desc'));
-        const snapshot = await getDocs(q);
-        const expenses = snapshot.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-        } as Expense));
-        
-        // Sync to IndexedDB
-        if (this.db) {
-          const transaction = this.db.transaction(STORE_NAME, 'readwrite');
-          const store = transaction.objectStore(STORE_NAME);
-          store.clear();
-          expenses.forEach((expense) => store.add(expense));
+      if (MONGODB_URI) {
+        // Try to fetch from MongoDB via API
+        const response = await fetch('/api/expenses');
+        if (response.ok) {
+          const expenses = await response.json();
+          // Sync to IndexedDB
+          if (this.db) {
+            const transaction = this.db.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            store.clear();
+            expenses.forEach((expense: Expense) => store.add(expense));
+          }
+          return expenses;
         }
-        return expenses;
       }
     } catch (error) {
-      console.error('Failed to fetch from Firestore, using IndexedDB:', error);
+      console.error('Failed to fetch from MongoDB, using IndexedDB:', error);
     }
 
     // Fall back to IndexedDB
@@ -77,12 +63,14 @@ export class DBService {
 
   async addExpense(expense: Expense): Promise<void> {
     try {
-      if (this.useFirestore) {
-        // Save to Firestore
-        await addDoc(collection(db!, 'expenses'), {
-          ...expense,
-          timestamp: new Date(),
+      if (MONGODB_URI) {
+        // Save to MongoDB via API
+        const response = await fetch('/api/expenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(expense),
         });
+        if (!response.ok) throw new Error('Failed to save to MongoDB');
       }
       // Always save to IndexedDB for offline access
       if (this.db) {
@@ -111,9 +99,12 @@ export class DBService {
 
   async deleteExpense(id: string): Promise<void> {
     try {
-      if (this.useFirestore) {
-        // Delete from Firestore
-        await deleteDoc(doc(db!, 'expenses', id));
+      if (MONGODB_URI) {
+        // Delete from MongoDB via API
+        const response = await fetch(`/api/expenses/${id}`, {
+          method: 'DELETE',
+        });
+        if (!response.ok) throw new Error('Failed to delete from MongoDB');
       }
       // Delete from IndexedDB
       if (this.db) {
