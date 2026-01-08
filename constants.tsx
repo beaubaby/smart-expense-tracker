@@ -15,4 +15,4 @@ export const CATEGORIES = Object.values(Category);
 
 export const DEFAULT_CURRENCY = 'NZD';
 export const SUPPORTED_CURRENCIES = ['NZD', 'THB'];
-export const THB_TO_NZD_RATE = 20;
+export const THB_TO_NZD_RATE = 19;

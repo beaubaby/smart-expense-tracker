@@ -6,10 +6,9 @@ import ExpenseList from './components/ExpenseList';
 import MonthlyView from './components/MonthlyView';
 import AddExpenseModal from './components/AddExpenseModal';
 import BottomNav from './components/BottomNav';
-import { DEFAULT_CURRENCY } from './constants';
 import { db, isConfigValid } from './firebaseConfig';
 import { dbService } from './dbService';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, getDocs } from 'firebase/firestore';
 
 type ViewType = 'overview' | 'transactions' | 'monthly';
 
@@ -21,35 +20,49 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'cloud' | 'local'>('local');
 
-  // Load initial data
+  // 1. Initial Load & Sync-Up Logic
   useEffect(() => {
-    const initData = async () => {
+    const initApp = async () => {
       try {
         await dbService.init();
-        // Migrate from old localStorage if any
         await dbService.migrateFromLocalStorage();
         
-        // Initial fast load from IndexedDB
+        // Load data from local storage first for instant UI
         const localData = await dbService.getAllExpenses();
         if (localData.length > 0) {
           setExpenses(localData.sort((a, b) => b.createdAt - a.createdAt));
         }
-        
-        if (!isConfigValid || !db) {
+
+        // Check if we can upgrade to Cloud
+        if (isConfigValid && db) {
+          // Check if Cloud is empty but local has data -> Sync Up!
+          const cloudRef = collection(db, "expenses");
+          const cloudSnap = await getDocs(cloudRef);
+          
+          if (cloudSnap.empty && localData.length > 0) {
+            console.log("Syncing local data to cloud...");
+            for (const item of localData) {
+              const { id, ...cloudItem } = item;
+              await addDoc(cloudRef, cloudItem);
+            }
+          }
+        } else {
           setIsLoading(false);
-          setSyncStatus('local');
         }
       } catch (err) {
-        console.error("Initialization error:", err);
+        console.error("Initialization failed:", err);
         setIsLoading(false);
       }
     };
-    initData();
+    initApp();
   }, []);
 
-  // Sync with Firebase Firestore
+  // 2. Real-time Cloud Sync
   useEffect(() => {
-    if (!isConfigValid || !db) return;
+    if (!isConfigValid || !db) {
+      setSyncStatus('local');
+      return;
+    }
 
     try {
       const q = query(collection(db, "expenses"), orderBy("createdAt", "desc"));
@@ -63,7 +76,7 @@ const App: React.FC = () => {
         setSyncStatus('cloud');
         setIsLoading(false);
         
-        // Background update local cache
+        // Update local cache for offline viewing
         cloudExpenses.forEach(exp => dbService.addExpense(exp).catch(() => {}));
       }, (err) => {
         console.error("Firestore sync error:", err);
@@ -73,7 +86,7 @@ const App: React.FC = () => {
 
       return () => unsubscribe();
     } catch (err) {
-      console.error("Setup Firestore listener failed:", err);
+      console.error("Firestore setup error:", err);
       setSyncStatus('local');
       setIsLoading(false);
     }
@@ -84,33 +97,29 @@ const App: React.FC = () => {
     const tempId = crypto.randomUUID();
     const expenseData = { ...newExpense, createdAt: timestamp };
 
-    // 1. Optimistic Update (UI reacts immediately)
+    // Optimistic Update
     if (syncStatus === 'local') {
       const fullExpense = { id: tempId, ...expenseData } as Expense;
       setExpenses(prev => [fullExpense, ...prev]);
       await dbService.addExpense(fullExpense);
     }
 
-    // 2. Persistent Save to Cloud
+    // Cloud Save
     if (db && syncStatus === 'cloud') {
       try {
         await addDoc(collection(db, "expenses"), expenseData);
       } catch (e) {
-        console.error("Cloud save failed, falling back to local:", e);
-        // If cloud fails, ensure it's at least in local
+        console.error("Cloud save failed:", e);
+        // Fallback to local if cloud fails
         await dbService.addExpense({ id: tempId, ...expenseData } as Expense);
       }
     }
   };
 
   const deleteExpense = async (id: string) => {
-    // Optimistic delete for UI speed
     setExpenses(prev => prev.filter(e => e.id !== id));
-    
-    // Delete from Local
-    await dbService.deleteExpense(id).catch(console.error);
+    await dbService.deleteExpense(id).catch(() => {});
 
-    // Delete from Cloud
     if (db && syncStatus === 'cloud') {
       try {
         await deleteDoc(doc(db, "expenses", id));
@@ -153,7 +162,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-1.5">
                 <div className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'cloud' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {syncStatus === 'cloud' ? 'Cloud Sync' : 'Local Mode'}
+                  {syncStatus === 'cloud' ? 'Cloud Sync Active' : 'Offline / Local Mode'}
                 </span>
               </div>
             </div>
@@ -165,7 +174,7 @@ const App: React.FC = () => {
             </span>
             <input 
               type="text" 
-              placeholder="Search expenses..."
+              placeholder="Search history..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-2.5 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
@@ -182,7 +191,7 @@ const App: React.FC = () => {
         {isLoading && expenses.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-100 border-t-indigo-600 mb-4"></div>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Syncing your data...</p>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Connecting to Cloud...</p>
           </div>
         ) : (
           <>
