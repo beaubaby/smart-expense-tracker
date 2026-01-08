@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Expense } from './types';
 import Dashboard from './components/Dashboard';
@@ -8,7 +7,7 @@ import AddExpenseModal from './components/AddExpenseModal';
 import BottomNav from './components/BottomNav';
 import { db, isConfigValid } from './firebaseConfig';
 import { dbService } from './dbService';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 
 type ViewType = 'overview' | 'transactions' | 'monthly';
 
@@ -20,111 +19,148 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'cloud' | 'local'>('local');
 
-  // 1. Initial Load & Sync-Up Logic
+  // Initialize IndexedDB
   useEffect(() => {
-    const initApp = async () => {
+    const initIndexedDB = async () => {
       try {
         await dbService.init();
         await dbService.migrateFromLocalStorage();
-        
-        // Load data from local storage first for instant UI
-        const localData = await dbService.getAllExpenses();
-        if (localData.length > 0) {
-          setExpenses(localData.sort((a, b) => b.createdAt - a.createdAt));
-        }
-
-        // Check if we can upgrade to Cloud
-        if (isConfigValid && db) {
-          // Check if Cloud is empty but local has data -> Sync Up!
-          const cloudRef = collection(db, "expenses");
-          const cloudSnap = await getDocs(cloudRef);
-          
-          if (cloudSnap.empty && localData.length > 0) {
-            console.log("Syncing local data to cloud...");
-            for (const item of localData) {
-              const { id, ...cloudItem } = item;
-              await addDoc(cloudRef, cloudItem);
-            }
-          }
-        } else {
-          setIsLoading(false);
-        }
       } catch (err) {
-        console.error("Initialization failed:", err);
-        setIsLoading(false);
+        console.error("IndexedDB initialization failed:", err);
       }
     };
-    initApp();
+    initIndexedDB();
   }, []);
 
-  // 2. Real-time Cloud Sync
+  // Real-time Cloud Sync - ALWAYS TRY THIS FIRST
   useEffect(() => {
     if (!isConfigValid || !db) {
+      console.log("Firebase not configured, using local mode");
       setSyncStatus('local');
+      setIsLoading(false);
       return;
     }
 
+    console.log("Setting up Firestore real-time sync...");
+    
     try {
       const q = query(collection(db, "expenses"), orderBy("createdAt", "desc"));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const cloudExpenses: Expense[] = [];
-        snapshot.forEach((doc) => {
-          cloudExpenses.push({ id: doc.id, ...doc.data() } as Expense);
-        });
-        
-        setExpenses(cloudExpenses);
-        setSyncStatus('cloud');
-        setIsLoading(false);
-        
-        // Update local cache for offline viewing
-        cloudExpenses.forEach(exp => dbService.addExpense(exp).catch(() => {}));
-      }, (err) => {
-        console.error("Firestore sync error:", err);
-        setSyncStatus('local');
-        setIsLoading(false);
-      });
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const cloudExpenses: Expense[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            cloudExpenses.push({
+              id: docSnap.id,
+              amount: data.amount,
+              currency: data.currency,
+              originalAmount: data.originalAmount,
+              originalCurrency: data.originalCurrency,
+              category: data.category,
+              date: data.date,
+              description: data.description,
+              createdAt: data.createdAt
+            } as Expense);
+          });
+          
+          console.log("Cloud sync successful, loaded", cloudExpenses.length, "expenses");
+          setExpenses(cloudExpenses);
+          setSyncStatus('cloud');
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error("Firestore listener error:", error);
+          setSyncStatus('local');
+          setIsLoading(false);
+          // Try to load from local cache
+          loadLocalExpenses();
+        }
+      );
 
       return () => unsubscribe();
     } catch (err) {
-      console.error("Firestore setup error:", err);
+      console.error("Firestore setup failed:", err);
       setSyncStatus('local');
       setIsLoading(false);
+      loadLocalExpenses();
     }
   }, []);
+
+  // Load from IndexedDB when offline
+  const loadLocalExpenses = async () => {
+    try {
+      const localExpenses = await dbService.getAllExpenses();
+      if (localExpenses.length > 0) {
+        setExpenses(localExpenses.sort((a, b) => b.createdAt - a.createdAt));
+      }
+    } catch (err) {
+      console.error("Failed to load local expenses:", err);
+    }
+  };
 
   const addExpense = async (newExpense: Omit<Expense, 'id' | 'createdAt'>) => {
     const timestamp = Date.now();
     const tempId = crypto.randomUUID();
     const expenseData = { ...newExpense, createdAt: timestamp };
+    const fullExpense = { id: tempId, ...expenseData } as Expense;
 
-    // Optimistic Update
-    if (syncStatus === 'local') {
-      const fullExpense = { id: tempId, ...expenseData } as Expense;
-      setExpenses(prev => [fullExpense, ...prev]);
-      await dbService.addExpense(fullExpense);
-    }
+    // Optimistic UI update
+    setExpenses(prev => [fullExpense, ...prev]);
 
-    // Cloud Save
+    // PRIMARY: Save to Cloud first
     if (db && syncStatus === 'cloud') {
       try {
-        await addDoc(collection(db, "expenses"), expenseData);
-      } catch (e) {
-        console.error("Cloud save failed:", e);
+        const docRef = await addDoc(collection(db, "expenses"), expenseData);
+        console.log("Expense saved to Firestore with ID:", docRef.id);
+        // Update local copy with real Firestore ID
+        setExpenses(prev => prev.map(e => e.id === tempId ? { ...e, id: docRef.id } : e));
+      } catch (error) {
+        console.error("Failed to save to Firestore:", error);
         // Fallback to local if cloud fails
-        await dbService.addExpense({ id: tempId, ...expenseData } as Expense);
+        try {
+          await dbService.addExpense(fullExpense);
+          console.log("Saved to local IndexedDB as fallback");
+        } catch (localErr) {
+          console.error("Local save also failed:", localErr);
+        }
+      }
+    } else {
+      // FALLBACK: Save to local IndexedDB only if offline
+      try {
+        await dbService.addExpense(fullExpense);
+        console.log("Saved to local IndexedDB (offline mode)");
+      } catch (err) {
+        console.error("Failed to save to IndexedDB:", err);
       }
     }
   };
 
   const deleteExpense = async (id: string) => {
+    // Optimistic update
     setExpenses(prev => prev.filter(e => e.id !== id));
-    await dbService.deleteExpense(id).catch(() => {});
 
+    // Delete from cloud first
     if (db && syncStatus === 'cloud') {
       try {
         await deleteDoc(doc(db, "expenses", id));
-      } catch (e) {
-        console.error("Cloud delete failed:", e);
+        console.log("Deleted from Firestore:", id);
+      } catch (error) {
+        console.error("Failed to delete from Firestore:", error);
+        // Still try local
+        try {
+          await dbService.deleteExpense(id);
+        } catch (localErr) {
+          console.error("Local delete also failed:", localErr);
+        }
+      }
+    } else {
+      // Delete from local cache
+      try {
+        await dbService.deleteExpense(id);
+        console.log("Deleted from IndexedDB:", id);
+      } catch (err) {
+        console.error("Failed to delete from IndexedDB:", err);
       }
     }
   };
@@ -162,7 +198,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-1.5">
                 <div className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'cloud' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {syncStatus === 'cloud' ? 'Cloud Sync Active' : 'Offline / Local Mode'}
+                  {isLoading ? 'Connecting...' : syncStatus === 'cloud' ? 'Cloud Sync Active ✓' : 'Offline / Local Mode'}
                 </span>
               </div>
             </div>
