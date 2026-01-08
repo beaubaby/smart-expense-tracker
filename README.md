@@ -1,91 +1,36 @@
 
-# ✨ Smart Expense Tracker (AI-Powered)
+# 🇹🇭 คู่มือการ Deploy Smart Expense Tracker (ละเอียดทุกขั้นตอน)
 
-แอปพลิเคชันบันทึกรายจ่ายอัจฉริยะที่รวมพลังของ **Google Gemini AI** และ **Firebase Firestore** เข้าด้วยกัน เพื่อให้การจัดการการเงินของคุณเป็นเรื่องง่าย สะดวก และซิงค์ข้อมูลได้แบบ Real-time
+หากคุณ Deploy แล้วแอปไม่ทำงาน หรือข้อมูลไม่ขึ้น ให้เช็คตามลำดับนี้ครับ:
 
-## 🚀 ฟีเจอร์เด่น
-- **AI Smart Scan:** ถ่ายรูปใบเสร็จหรือ Screenshot หน้าจอแชท/โอนเงิน แล้วให้ Gemini AI ช่วยสกัดข้อมูล (จำนวนเงิน, หมวดหมู่, วันที่) โดยอัตโนมัติ
-- **Multi-Currency Support:** รองรับเงิน THB และ NZD พร้อมระบบคำนวณอัตราแลกเปลี่ยนอัตโนมัติ
-- **Cloud Sync:** เก็บข้อมูลบน Firebase Firestore ข้อมูลไม่หาย ซิงค์ข้อมูลข้ามเครื่องได้ทันที
-- **Visual Insights:** สรุปค่าใช้จ่ายด้วยกราฟวงกลม (Allocation) และกราฟแท่ง (Flow) แยกตามเดือน
-- **CSV Export:** ส่งออกข้อมูลเป็นไฟล์ Excel/CSV เพื่อนำไปวิเคราะห์ต่อได้ง่ายๆ
+## 1. ตั้งค่า Firebase (หลังบ้าน)
+1. เข้าไปที่ [Firebase Console](https://console.firebase.google.com/)
+2. สร้างโปรเจกต์ใหม่
+3. ไปที่เมนู **Firestore Database** > กด **Create Database**
+   - **สำคัญมาก:** เลือก **Start in test mode** (เพื่อให้แอปเขียนข้อมูลได้ทันที)
+   - เลือก Location เป็น `asia-southeast1`
+4. ไปที่ **Project Settings** (รูปเฟือง) > เลื่อนลงมาล่างสุด กดไอคอน `</>` เพื่อสร้าง **Web App**
+5. ก๊อปปี้ค่าใน `firebaseConfig` ไว้ใช้ในขั้นตอนถัดไป
 
----
+## 2. ตั้งค่าใน Vercel (จุดที่คนมักทำผิด)
+เมื่อ Import โปรเจกต์เข้า Vercel แล้ว ให้ไปที่หน้า **Settings > Environment Variables** และเพิ่มค่าเหล่านี้ (Copy ชื่อไปวางให้ตรงเป๊ะ):
 
-## 🛠️ ขั้นตอนการตั้งค่า Firebase (Step-by-Step)
+| ชื่อตัวแปร (Key) | ค่าที่ต้องใส่ (Value) |
+| :--- | :--- |
+| `API_KEY` | API Key จาก Google AI Studio (สำหรับ AI สแกนใบเสร็จ) |
+| `VITE_FIREBASE_API_KEY` | ค่า `apiKey` จาก Firebase |
+| `VITE_FIREBASE_AUTH_DOMAIN` | ค่า `authDomain` จาก Firebase |
+| `VITE_FIREBASE_PROJECT_ID` | ค่า `projectId` จาก Firebase |
+| `VITE_FIREBASE_STORAGE_BUCKET` | ค่า `storageBucket` จาก Firebase |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | ค่า `messagingSenderId` จาก Firebase |
+| `VITE_FIREBASE_APP_ID` | ค่า `appId` จาก Firebase |
 
-เพื่อให้แอปสามารถเก็บข้อมูลใน Cloud ได้ คุณต้องตั้งค่า Firebase ดังนี้:
+**หลังจากใส่ครบแล้ว ให้กด "Redeploy" อีกรอบเพื่อให้ Vercel ดึงค่าใหม่ไปใช้ครับ**
 
-1.  **สร้างโปรเจกต์:** ไปที่ [Firebase Console](https://console.firebase.google.com/) แล้วกด **"Add project"**
-2.  **ลงทะเบียนเว็บ:** กดไอคอน **`</>` (Web)** เพื่อสร้าง App และก๊อปปี้ `firebaseConfig` ไว้
-3.  **เปิดใช้งานฐานข้อมูล:** 
-    - ที่เมนูซ้ายมือ เลือก **Firestore Database**
-    - กด **Create database**
-    - เลือก **Start in test mode** (เพื่อทดสอบเบื้องต้น)
-    - เลือก Location เป็น **asia-southeast1** (สำหรับผู้ใช้ในไทย) แล้วกด Enable
-
----
-
-## 🌐 การ Deploy บน Vercel
-
-1.  **เตรียมโค้ด:** นำโปรเจกต์นี้ขึ้น GitHub Repository ของคุณ
-2.  **เชื่อมต่อ Vercel:** ไปที่ [Vercel.com](https://vercel.com/) นำเข้าโปรเจกต์จาก GitHub
-3.  **ตั้งค่า Environment Variables:** (สำคัญมาก) ในหน้าตั้งค่าก่อน Deploy ให้เพิ่มค่าต่อไปนี้:
-    - `API_KEY`: รหัส Gemini API ของคุณ
-    - `VITE_FIREBASE_API_KEY`: (จาก firebaseConfig)
-    - `VITE_FIREBASE_AUTH_DOMAIN`: (จาก firebaseConfig)
-    - `VITE_FIREBASE_PROJECT_ID`: (จาก firebaseConfig)
-    - `VITE_FIREBASE_STORAGE_BUCKET`: (จาก firebaseConfig)
-    - `VITE_FIREBASE_MESSAGING_SENDER_ID`: (จาก firebaseConfig)
-    - `VITE_FIREBASE_APP_ID`: (จาก firebaseConfig)
-4.  **Deploy:** กดปุ่ม **Deploy** แล้วรอจนเสร็จสิ้น
+## 3. วิธีเช็คว่าทำสำเร็จไหม?
+- ถ้าเข้าหน้าเว็บแล้วเห็นคำว่า **"Cloud Sync Active"** (จุดสีเขียว) แปลว่าเชื่อมต่อสำเร็จ
+- ถ้าขึ้น **"Local Testing Mode"** (จุดสีเหลือง) แปลว่าลืมใส่ Environment Variables ใน Vercel
+- ถ้าขึ้น **"Sync Error"** แปลว่าคุณอาจจะลืมเปิด Firestore ใน Firebase หรือตั้ง Rules เป็น Production mode ทำให้แอปอ่านข้อมูลไม่ได้
 
 ---
-
-## 🔒 การตั้งค่าความปลอดภัย (Firestore Security Rules)
-
-เมื่อทดสอบแอปเสร็จแล้วและต้องการใช้ในระยะยาว ควรเปลี่ยนสถานะจาก **Test Mode** เป็นสถานะที่ปลอดภัยขึ้น เพื่อป้องกันคนอื่นมาเขียนข้อมูลทับ
-
-### วิธีตั้งค่า:
-1.  ไปที่หน้า **Firebase Console** > **Firestore Database** > แท็บ **Rules**
-2.  วางโค้ดด้านล่างนี้ลงไป (เลือกแบบที่เหมาะสมกับคุณ):
-
-#### แบบที่ 1: ปิดการเข้าถึงจากสาธารณะ (ล็อคข้อมูล)
-ใช้เมื่อต้องการให้แอปใช้งานได้เฉพาะผ่าน API Key ที่เรากำหนดเท่านั้น (จำกัดสิทธิ์พื้นฐาน)
-```javascript
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /expenses/{document=**} {
-      // อนุญาตเฉพาะผู้ที่มี API Key ถูกต้อง (ตั้งเงื่อนไขได้ตามความต้องการ)
-      allow read, write: if request.auth != null; 
-    }
-  }
-}
-```
-
-#### แบบที่ 2: ระบบระบุตัวตน (เมื่อคุณเพิ่ม Firebase Auth ในอนาคต)
-หากคุณพัฒนาต่อโดยเพิ่มระบบ Login ให้ใช้กฎนี้เพื่อให้ "แต่ละคนเห็นเฉพาะข้อมูลของตัวเอง"
-```javascript
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /expenses/{expenseId} {
-      // อนุญาตให้อ่านและเขียนเฉพาะเอกสารที่มี userId ตรงกับผู้ที่ Login อยู่
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null;
-    }
-  }
-}
-```
-
----
-
-## 📦 เทคโนโลยีที่ใช้
-- **Frontend:** React (hooks, functional components)
-- **Styling:** Tailwind CSS
-- **AI Integration:** Google Generative AI (Gemini 3 Flash)
-- **Database:** Firebase Firestore
-- **Charts:** Recharts
-- **Icons:** Lucide-style SVG icons
-
----
-*Created with ❤️ for Smart Finance Management*
+*หากติดปัญหาตรงไหน สามารถสอบถามเพิ่มเติมได้เลยครับ!*

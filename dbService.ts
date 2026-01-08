@@ -1,7 +1,7 @@
 
 import { Expense } from './types';
 
-const DB_NAME = 'SmartSpendDB';
+const DB_NAME = 'SmartExpenseTrackerDB';
 const STORE_NAME = 'expenses';
 const DB_VERSION = 1;
 

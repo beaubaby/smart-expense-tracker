@@ -2,10 +2,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category } from "./types";
 
-// Always use direct process.env.API_KEY as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const API_KEY = process.env.API_KEY;
+
+export const isGeminiAvailable = !!API_KEY;
 
 export const parseReceiptImage = async (base64Image: string) => {
+  if (!API_KEY) {
+    throw new Error("GEMINI_API_KEY_MISSING");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -43,7 +50,6 @@ export const parseReceiptImage = async (base64Image: string) => {
       },
     });
 
-    // Access the text property directly from the GenerateContentResponse object
     const textOutput = response.text || '{}';
     return JSON.parse(textOutput);
   } catch (error) {
