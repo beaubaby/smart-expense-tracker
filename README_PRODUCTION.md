@@ -288,3 +288,23 @@ Created for personal expense tracking.
 5. ✅ Monitor performance
 
 **Ready to deploy? Let's go! 🚀**
+
+---
+
+## ❓ 3. ถาม-ตอบ ปัญหาที่พบบ่อย
+
+### ถาม: ทำไม Deploy แล้วหน้าจอขาว (White Screen)?
+**ตอบ:** สาเหตุส่วนใหญ่เกิดจาก Vercel Build ไม่สำเร็จ หรือหาไฟล์ `index.tsx` ไม่เจอ ให้ตรวจสอบว่า:
+1. ไฟล์ `index.html` มีบรรทัด `<script type="module" src="/index.tsx"></script>` อยู่ที่ส่วนท้าย.
+2. ตรวจสอบว่าชื่อไฟล์ใน GitHub เป็นตัวเล็ก-ใหญ่ตรงกับในโค้ดหรือไม่ (Linux บน Vercel ตรวจสอบตัวอักษรพิมพ์เล็ก-ใหญ่เข้มงวด).
+3. ตรวจสอบว่า `VITE_MONGODB_URI` มีค่าใน Vercel Environment Variables หรือไม่.
+
+### ถาม: ทำไมข้อมูลเดิมที่เคยบันทึกไว้หายไป?
+**ตอบ:** หากคุณสลับจากเครื่องหนึ่งไปอีกเครื่องหนึ่งโดยที่ยังไม่ได้ตั้งค่า MongoDB ข้อมูลจะเก็บในเครื่องนั้นๆ เท่านั้น (IndexedDB) การตั้งค่า Cloud ตามข้อ 1 และ 2 จะช่วยให้ข้อมูลเชื่อมกันทุกเครื่อง.
+
+### ถาม: "Cannot connect to MongoDB" error?
+**ตอบ:** ตรวจสอบว่า:
+1. `VITE_MONGODB_URI` ถูกต้องและมีค่าใน Vercel Environment Variables
+2. MongoDB User ที่สร้างมีสิทธิ์ที่เพียงพอ (Atlas Admin)
+3. Network Access ใน MongoDB Atlas เปิดอนุญาต (โดยปกติจะเป็น "Allow access from anywhere")
+4. Connection String มี username:password ที่ถูกต้อง
