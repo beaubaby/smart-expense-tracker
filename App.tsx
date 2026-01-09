@@ -5,9 +5,7 @@ import ExpenseList from './components/ExpenseList';
 import MonthlyView from './components/MonthlyView';
 import AddExpenseModal from './components/AddExpenseModal';
 import BottomNav from './components/BottomNav';
-import { db, isConfigValid } from './firebaseConfig';
 import { dbService } from './dbService';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 
 type ViewType = 'overview' | 'transactions' | 'monthly';
 
@@ -19,149 +17,93 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'cloud' | 'local'>('local');
 
-  // Initialize IndexedDB
+  // Initialize IndexedDB and load expenses
   useEffect(() => {
-    const initIndexedDB = async () => {
+    const initApp = async () => {
       try {
+        console.log('🔄 Initializing MongoDB with IndexedDB fallback...');
         await dbService.init();
-        await dbService.migrateFromLocalStorage();
+        
+        // Load expenses from MongoDB (or IndexedDB as fallback)
+        await loadExpenses();
+        
+        console.log('✅ App initialized successfully');
+        setSyncStatus('cloud');
       } catch (err) {
-        console.error("IndexedDB initialization failed:", err);
+        console.error("❌ Initialization failed:", err);
+        setSyncStatus('local');
+      } finally {
+        setIsLoading(false);
       }
     };
-    initIndexedDB();
+    initApp();
   }, []);
 
-  // Real-time Cloud Sync - ALWAYS TRY THIS FIRST
-  useEffect(() => {
-    if (!isConfigValid || !db) {
-      console.log("Firebase not configured, using local mode");
-      setSyncStatus('local');
-      setIsLoading(false);
-      return;
-    }
-
-    console.log("Setting up Firestore real-time sync...");
-    
+  // Load expenses from MongoDB
+  const loadExpenses = async () => {
     try {
-      const q = query(collection(db, "expenses"), orderBy("createdAt", "desc"));
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const cloudExpenses: Expense[] = [];
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            cloudExpenses.push({
-              id: docSnap.id,
-              amount: data.amount,
-              currency: data.currency,
-              originalAmount: data.originalAmount,
-              originalCurrency: data.originalCurrency,
-              category: data.category,
-              date: data.date,
-              description: data.description,
-              createdAt: data.createdAt
-            } as Expense);
-          });
-          
-          console.log("Cloud sync successful, loaded", cloudExpenses.length, "expenses");
-          setExpenses(cloudExpenses);
-          setSyncStatus('cloud');
-          setIsLoading(false);
-        },
-        (error) => {
-          console.error("Firestore listener error:", error);
-          setSyncStatus('local');
-          setIsLoading(false);
-          // Try to load from local cache
-          loadLocalExpenses();
-        }
-      );
-
-      return () => unsubscribe();
+      console.log('📥 Loading expenses from MongoDB...');
+      const loadedExpenses = await dbService.getAllExpenses();
+      console.log(`✅ Loaded ${loadedExpenses.length} expenses`);
+      setExpenses(loadedExpenses);
     } catch (err) {
-      console.error("Firestore setup failed:", err);
-      setSyncStatus('local');
-      setIsLoading(false);
-      loadLocalExpenses();
-    }
-  }, []);
-
-  // Load from IndexedDB when offline
-  const loadLocalExpenses = async () => {
-    try {
-      const localExpenses = await dbService.getAllExpenses();
-      if (localExpenses.length > 0) {
-        setExpenses(localExpenses.sort((a, b) => b.createdAt - a.createdAt));
-      }
-    } catch (err) {
-      console.error("Failed to load local expenses:", err);
+      console.error("❌ Failed to load expenses:", err);
+      throw err;
     }
   };
 
+  // Add new expense to MongoDB
   const addExpense = async (newExpense: Omit<Expense, 'id' | 'createdAt'>) => {
     const timestamp = Date.now();
     const tempId = crypto.randomUUID();
-    const expenseData = { ...newExpense, createdAt: timestamp };
-    const fullExpense = { id: tempId, ...expenseData } as Expense;
+    const fullExpense = { 
+      id: tempId, 
+      ...newExpense, 
+      createdAt: timestamp 
+    } as Expense;
 
     // Optimistic UI update
     setExpenses(prev => [fullExpense, ...prev]);
 
-    // PRIMARY: Save to Cloud first
-    if (db && syncStatus === 'cloud') {
-      try {
-        const docRef = await addDoc(collection(db, "expenses"), expenseData);
-        console.log("Expense saved to Firestore with ID:", docRef.id);
-        // Update local copy with real Firestore ID
-        setExpenses(prev => prev.map(e => e.id === tempId ? { ...e, id: docRef.id } : e));
-      } catch (error) {
-        console.error("Failed to save to Firestore:", error);
-        // Fallback to local if cloud fails
-        try {
-          await dbService.addExpense(fullExpense);
-          console.log("Saved to local IndexedDB as fallback");
-        } catch (localErr) {
-          console.error("Local save also failed:", localErr);
-        }
-      }
-    } else {
-      // FALLBACK: Save to local IndexedDB only if offline
-      try {
-        await dbService.addExpense(fullExpense);
-        console.log("Saved to local IndexedDB (offline mode)");
-      } catch (err) {
-        console.error("Failed to save to IndexedDB:", err);
-      }
+    try {
+      console.log('💾 Saving expense to MongoDB...');
+      await dbService.addExpense(fullExpense);
+      console.log('✅ Expense saved successfully');
+    } catch (error) {
+      console.error("❌ Failed to save expense:", error);
+      // Remove from UI if save fails
+      setExpenses(prev => prev.filter(e => e.id !== tempId));
+      throw error;
     }
   };
 
+  // Delete expense from MongoDB
   const deleteExpense = async (id: string) => {
     // Optimistic update
     setExpenses(prev => prev.filter(e => e.id !== id));
 
-    // Delete from cloud first
-    if (db && syncStatus === 'cloud') {
-      try {
-        await deleteDoc(doc(db, "expenses", id));
-        console.log("Deleted from Firestore:", id);
-      } catch (error) {
-        console.error("Failed to delete from Firestore:", error);
-        // Still try local
-        try {
-          await dbService.deleteExpense(id);
-        } catch (localErr) {
-          console.error("Local delete also failed:", localErr);
-        }
+    try {
+      console.log('🗑️  Deleting expense from MongoDB...');
+      await dbService.deleteExpense(id);
+      console.log('✅ Expense deleted successfully');
+    } catch (error) {
+      console.error("❌ Failed to delete expense:", error);
+      // Restore if delete fails
+      const deletedExpense = expenses.find(e => e.id === id);
+      if (deletedExpense) {
+        setExpenses(prev => [deletedExpense, ...prev]);
       }
-    } else {
-      // Delete from local cache
-      try {
-        await dbService.deleteExpense(id);
-        console.log("Deleted from IndexedDB:", id);
-      } catch (err) {
-        console.error("Failed to delete from IndexedDB:", err);
-      }
+      throw error;
+    }
+  };
+
+  const refreshExpenses = async () => {
+    try {
+      console.log('🔄 Refreshing expenses...');
+      await loadExpenses();
+      console.log('✅ Refresh complete');
+    } catch (error) {
+      console.error("❌ Failed to refresh:", error);
     }
   };
 
