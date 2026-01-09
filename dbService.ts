@@ -1,4 +1,3 @@
-
 import { Expense } from './types';
 
 const DB_NAME = 'SmartExpenseTrackerDB';
@@ -34,7 +33,13 @@ export class DBService {
         // Try to fetch from MongoDB via API
         const response = await fetch('/api/expenses');
         if (response.ok) {
-          const expenses = await response.json();
+          const raw = await response.json();
+          // Normalize documents: prefer `id`, fallback from `_id`
+          const expenses: Expense[] = raw.map((doc: any) => {
+            const { _id, id, ...rest } = doc;
+            return { id: (id ?? _id?._id ?? _id ?? '').toString(), ...rest } as Expense;
+          });
+
           // Sync to IndexedDB
           if (this.db) {
             const transaction = this.db.transaction(STORE_NAME, 'readwrite');
@@ -63,33 +68,52 @@ export class DBService {
 
   async addExpense(expense: Expense): Promise<void> {
     try {
+      // Ensure we have an id for IndexedDB keyPath
+      if (!expense.id) {
+        // lightweight client id until server returns official id
+        expense.id = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      }
+
       if (MONGODB_URI) {
-        // Save to MongoDB via API
+        // Save to MongoDB via API and get the inserted id back
         const response = await fetch('/api/expenses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(expense),
         });
-        if (!response.ok) throw new Error('Failed to save to MongoDB');
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          throw new Error(`Failed to save to MongoDB: ${response.status} ${text}`);
+        }
+        const body = await response.json().catch(() => ({}));
+        const returnedId = (body.id ?? body._id ?? body.insertedId ?? '').toString();
+        if (returnedId) {
+          expense.id = returnedId;
+        }
       }
-      // Always save to IndexedDB for offline access
+
+      // Always save to IndexedDB for offline access (use final id)
       if (this.db) {
         const transaction = this.db.transaction(STORE_NAME, 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
         return new Promise((resolve, reject) => {
-          const request = store.add(expense);
+          // use put to upsert in case id was replaced by server
+          const request = store.put(expense);
           request.onsuccess = () => resolve();
           request.onerror = () => reject(request.error);
         });
       }
     } catch (error) {
       console.error('Failed to add expense:', error);
-      // Fall back to IndexedDB only
+      // Fall back to IndexedDB only (ensure id exists)
+      if (!expense.id) {
+        expense.id = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      }
       if (this.db) {
         const transaction = this.db.transaction(STORE_NAME, 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
         return new Promise((resolve, reject) => {
-          const request = store.add(expense);
+          const request = store.put(expense);
           request.onsuccess = () => resolve();
           request.onerror = () => reject(request.error);
         });
@@ -104,7 +128,10 @@ export class DBService {
         const response = await fetch(`/api/expenses/${id}`, {
           method: 'DELETE',
         });
-        if (!response.ok) throw new Error('Failed to delete from MongoDB');
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          throw new Error(`Failed to delete from MongoDB: ${response.status} ${text}`);
+        }
       }
       // Delete from IndexedDB
       if (this.db) {
