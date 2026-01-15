@@ -3,7 +3,9 @@ import { Expense } from './types';
 const DB_NAME = 'SmartExpenseTrackerDB';
 const STORE_NAME = 'expenses';
 const DB_VERSION = 1;
-const MONGODB_URI = process.env.VITE_MONGODB_URI;
+
+// API-first approach: Always try the server API, fall back to IndexedDB for offline
+const USE_CLOUD_API = true;
 
 export class DBService {
   private db: IDBDatabase | null = null;
@@ -29,7 +31,7 @@ export class DBService {
 
   async getAllExpenses(): Promise<Expense[]> {
     try {
-      if (MONGODB_URI) {
+      if (USE_CLOUD_API) {
         // Try to fetch from MongoDB via API
         const response = await fetch('/api/expenses');
         if (response.ok) {
@@ -74,7 +76,7 @@ export class DBService {
         expense.id = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       }
 
-      if (MONGODB_URI) {
+      if (USE_CLOUD_API) {
         // Save to MongoDB via API and get the inserted id back
         const response = await fetch('/api/expenses', {
           method: 'POST',
@@ -123,7 +125,7 @@ export class DBService {
 
   async deleteExpense(id: string): Promise<void> {
     try {
-      if (MONGODB_URI) {
+      if (USE_CLOUD_API) {
         // Delete from MongoDB via API
         const response = await fetch(`/api/expenses/${id}`, {
           method: 'DELETE',
